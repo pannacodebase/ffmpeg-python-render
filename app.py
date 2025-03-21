@@ -1,0 +1,74 @@
+from flask import Flask, request, send_file, jsonify
+import ffmpeg
+import os
+import shutil
+import subprocess
+
+app = Flask(__name__)
+UPLOAD_FOLDER = 'uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Debug route to check FFmpeg
+@app.route('/debug', methods=['GET'])
+def debug_ffmpeg():
+    try:
+        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True)
+        return jsonify({"ffmpeg_version": result.stdout, "status": "FFmpeg found"})
+    except FileNotFoundError:
+        return jsonify({"error": "FFmpeg not found"}), 500
+
+@app.route('/combine', methods=['POST'])
+def combine_files():
+    if 'images' not in request.files or 'bgMusic' not in request.files:
+        return jsonify({"error": "Missing images or bgMusic"}), 400
+
+    image_files = request.files.getlist('images')
+    audio_file = request.files.get('audio')
+    bg_music_file = request.files['bgMusic']
+    
+    image_paths = []
+    for i, img in enumerate(image_files):
+        path = os.path.join(UPLOAD_FOLDER, f"img{i}.{img.filename.split('.')[-1]}")
+        img.save(path)
+        image_paths.append(path)
+    
+    bg_music_path = os.path.join(UPLOAD_FOLDER, 'bg.mp3')
+    bg_music_file.save(bg_music_path)
+    
+    audio_path = None
+    if audio_file:
+        audio_path = os.path.join(UPLOAD_FOLDER, 'audio.mp3')
+        audio_file.save(audio_path)
+
+    output_file = os.path.join(UPLOAD_FOLDER, f"output-{os.urandom(4).hex()}.mp4")
+
+    try:
+        stream = ffmpeg.input(image_paths[0], loop=1)
+        for img in image_paths[1:]:
+            stream = ffmpeg.concat(stream, ffmpeg.input(img, loop=1), v=1, a=0)
+        stream = ffmpeg.filter(stream, 'scale', '1280:720', force_original_aspect_ratio='decrease')
+        stream = ffmpeg.filter(stream, 'pad', '1280:720:(ow-iw)/2:(oh-ih)/2')
+        stream = ffmpeg.filter(stream, 'setsar', 1)
+        stream = ffmpeg.filter(stream, 'fps', 30)
+        stream = ffmpeg.filter(stream, 'format', 'yuv420p')
+
+        audio_stream = ffmpeg.input(bg_music_path).filter('volume', 0.5)
+        if audio_path:
+            fg_audio = ffmpeg.input(audio_path).filter('volume', 1.0)
+            audio_stream = ffmpeg.filter([audio_stream, fg_audio], 'amix', inputs=2)
+
+        output = ffmpeg.output(stream, audio_stream, output_file, 
+                              shortest=None, t=len(image_paths) * 5,
+                              vcodec='libx264', acodec='aac')
+        ffmpeg.run(output)
+
+        response = send_file(output_file, mimetype='video/mp4', as_attachment=True, download_name='output.mp4')
+        shutil.rmtree(UPLOAD_FOLDER)
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        return response
+
+    except ffmpeg.Error as e:
+        return jsonify({"error": str(e.stderr.decode())}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
