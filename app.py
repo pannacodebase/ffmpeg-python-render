@@ -13,30 +13,39 @@ logger = logging.getLogger(__name__)
 
 @app.route('/combine', methods=['POST'])
 def combine_files():
-    if 'image' not in request.files or 'bg_music' not in request.files:
-        logger.error("Missing image or bg_music")
-        return jsonify({"error": "Missing image or bg_music"}), 400
+    if 'image1' not in request.files or 'image2' not in request.files or 'bg_music' not in request.files:
+        logger.error("Missing image1, image2, or bg_music")
+        return jsonify({"error": "Missing image1, image2, or bg_music"}), 400
 
-    image_file = request.files['image']
+    image1_file = request.files['image1']
+    image2_file = request.files['image2']
     bg_music_file = request.files['bg_music']
     
-    image_path = os.path.join(UPLOAD_FOLDER, 'test_image.jpg')
+    image1_path = os.path.join(UPLOAD_FOLDER, 'image1.jpg')
+    image2_path = os.path.join(UPLOAD_FOLDER, 'image2.jpg')
     bg_music_path = os.path.join(UPLOAD_FOLDER, 'background.mp3')
     output_file = os.path.join(UPLOAD_FOLDER, 'output_video.mp4')
 
-    image_file.save(image_path)
-    logger.info(f"Saved image: {image_path}")
+    image1_file.save(image1_path)
+    logger.info(f"Saved image1: {image1_path}")
+    image2_file.save(image2_path)
+    logger.info(f"Saved image2: {image2_path}")
     bg_music_file.save(bg_music_path)
     logger.info(f"Saved bg_music: {bg_music_path}")
 
     try:
-        stream = ffmpeg.input(image_path, loop=1, t=5)  # 5-second image duration
+        # Input streams for both images, each 5 seconds
+        stream1 = ffmpeg.input(image1_path, loop=1, t=5)
+        stream2 = ffmpeg.input(image2_path, loop=1, t=5)
+        # Concatenate images into a slideshow
+        video = ffmpeg.concat(stream1, stream2, v=1, a=0)
         audio = ffmpeg.input(bg_music_path)
-        output = ffmpeg.output(stream, audio, output_file, 
+        # Output with resizing to 1280x720
+        output = ffmpeg.output(video, audio, output_file, 
                               vcodec='libx264', acodec='aac', 
-                              s='1280x720',  # Resize to 1280x720
+                              s='1280x720',  # Resize all to 1280x720
                               r=25,          # Frame rate
-                              t=5,           # 5-second video
+                              t=10,          # 10 seconds total (2 images × 5s)
                               shortest=None)
         logger.info("Running FFmpeg command")
         ffmpeg.run(output, overwrite_output=True, capture_stdout=True, capture_stderr=True)
