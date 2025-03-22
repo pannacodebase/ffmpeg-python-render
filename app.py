@@ -13,38 +13,30 @@ logger = logging.getLogger(__name__)
 
 @app.route('/combine', methods=['POST'])
 def combine_files():
-    if 'images' not in request.files or 'bgMusic' not in request.files:
-        logger.error("Missing images or bgMusic")
-        return jsonify({"error": "Missing images or bgMusic"}), 400
+    if 'image' not in request.files or 'bg_music' not in request.files:
+        logger.error("Missing image or bg_music")
+        return jsonify({"error": "Missing image or bg_music"}), 400
 
-    image_files = request.files.getlist('images')
-    bg_music_file = request.files['bgMusic']
+    image_file = request.files['image']
+    bg_music_file = request.files['bg_music']
     
-    image_paths = []
-    for i, img in enumerate(image_files):
-        path = os.path.join(UPLOAD_FOLDER, f"img{i}.{img.filename.split('.')[-1]}")
-        img.save(path)
-        image_paths.append(path)
-        logger.info(f"Saved image: {path}")
-    
-    bg_music_path = os.path.join(UPLOAD_FOLDER, 'bg.mp3')
+    image_path = os.path.join(UPLOAD_FOLDER, 'test_image.jpg')
+    bg_music_path = os.path.join(UPLOAD_FOLDER, 'background.mp3')
+    output_file = os.path.join(UPLOAD_FOLDER, 'output_video.mp4')
+
+    image_file.save(image_path)
+    logger.info(f"Saved image: {image_path}")
     bg_music_file.save(bg_music_path)
-    logger.info(f"Saved bgMusic: {bg_music_path}")
-
-    output_file = os.path.join(UPLOAD_FOLDER, f"output-{os.urandom(4).hex()}.mp4")
-    logger.info(f"Output file will be: {output_file}")
+    logger.info(f"Saved bg_music: {bg_music_path}")
 
     try:
-        # Simplify: Resize to 1280x720 and avoid complex filters
-        stream = ffmpeg.input(image_paths[0], loop=1, t=5)
-        for img in image_paths[1:]:
-            stream = ffmpeg.concat(stream, ffmpeg.input(img, loop=1, t=5), v=1, a=0)
+        stream = ffmpeg.input(image_path, loop=1, t=5)  # 5-second image duration
         audio = ffmpeg.input(bg_music_path)
         output = ffmpeg.output(stream, audio, output_file, 
                               vcodec='libx264', acodec='aac', 
-                              s='1280x720',  # Set size directly in output
+                              s='1280x720',  # Resize to 1280x720
                               r=25,          # Frame rate
-                              t=len(image_paths) * 5,  # Duration
+                              t=5,           # 5-second video
                               shortest=None)
         logger.info("Running FFmpeg command")
         ffmpeg.run(output, overwrite_output=True, capture_stdout=True, capture_stderr=True)
@@ -54,7 +46,7 @@ def combine_files():
             return jsonify({"error": "FFmpeg produced no output"}), 500
 
         logger.info("FFmpeg completed successfully")
-        response = send_file(output_file, mimetype='video/mp4', as_attachment=True, download_name='output.mp4')
+        response = send_file(output_file, mimetype='video/mp4', as_attachment=True, download_name='output_video.mp4')
         shutil.rmtree(UPLOAD_FOLDER)
         os.makedirs(UPLOAD_FOLDER, exist_ok=True)
         return response
