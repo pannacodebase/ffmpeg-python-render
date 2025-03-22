@@ -13,61 +13,31 @@ logger = logging.getLogger(__name__)
 
 @app.route('/combine', methods=['POST'])
 def combine_files():
-    if 'image1' not in request.files or 'image2' not in request.files or 'bg_music' not in request.files:
-        logger.error("Missing image1, image2, or bg_music")
-        return jsonify({"error": "Missing image1, image2, or bg_music"}), 400
+    if 'image' not in request.files or 'bg_music' not in request.files:
+        logger.error("Missing image or bg_music")
+        return jsonify({"error": "Missing image or bg_music"}), 400
 
-    image1_file = request.files['image1']
-    image2_file = request.files['image2']
+    image_file = request.files['image']
     bg_music_file = request.files['bg_music']
     
-    image1_path = os.path.join(UPLOAD_FOLDER, 'image1.jpg')
-    image2_path = os.path.join(UPLOAD_FOLDER, 'image2.jpg')
+    image_path = os.path.join(UPLOAD_FOLDER, 'test_image.jpg')
     bg_music_path = os.path.join(UPLOAD_FOLDER, 'background.mp3')
     output_file = os.path.join(UPLOAD_FOLDER, 'output_video.mp4')
 
-    image1_file.save(image1_path)
-    logger.info(f"Saved image1: {image1_path}")
-    image2_file.save(image2_path)
-    logger.info(f"Saved image2: {image2_path}")
+    image_file.save(image_path)
+    logger.info(f"Saved image: {image_path}")
     bg_music_file.save(bg_music_path)
     logger.info(f"Saved bg_music: {bg_music_path}")
 
     try:
-        # Define target resolution and frame rate
-        target_resolution = '1280x720'
-        frame_rate = 25
-        duration_per_image = 5  # seconds
-        frames_per_image = frame_rate * duration_per_image  # 125 frames
-
-        # Input streams for both images, each 5 seconds, with scaling and looping
-        stream1 = (
-            ffmpeg.input(image1_path)
-            .filter('scale', size=target_resolution, force_original_aspect_ratio='decrease')
-            .filter('pad', 1280, 720, '(ow-iw)/2', '(oh-ih)/2')
-            .filter('setsar', 1)
-            .filter('loop', loop=frames_per_image - 1, size=1)  # Loop single frame 124 times (total 125 frames)
-            .filter('fps', fps=frame_rate)  # Ensure frame rate
-        )
-        stream2 = (
-            ffmpeg.input(image2_path)
-            .filter('scale', size=target_resolution, force_original_aspect_ratio='decrease')
-            .filter('pad', 1280, 720, '(ow-iw)/2', '(oh-ih)/2')
-            .filter('setsar', 1)
-            .filter('loop', loop=frames_per_image - 1, size=1)  # Loop single frame 124 times (total 125 frames)
-            .filter('fps', fps=frame_rate)  # Ensure frame rate
-        )
-
-        # Concatenate images into a slideshow
-        video = ffmpeg.concat(stream1, stream2, v=1, a=0)
+        stream = ffmpeg.input(image_path, loop=1, t=5)  # 5-second image duration
         audio = ffmpeg.input(bg_music_path)
-
-        # Output with video and audio
-        output = ffmpeg.output(video, audio, output_file, 
+        output = ffmpeg.output(stream, audio, output_file, 
                               vcodec='libx264', acodec='aac', 
-                              r=frame_rate,  # Frame rate
-                              t=10,          # 10 seconds total (2 images × 5s)
-                              shortest=None) # Use full 10s duration
+                              s='1280x720',  # Resize to 1280x720
+                              r=25,          # Frame rate
+                              t=5,           # 5-second video
+                              shortest=None)
         logger.info("Running FFmpeg command")
         ffmpeg.run(output, overwrite_output=True, capture_stdout=True, capture_stderr=True)
 
