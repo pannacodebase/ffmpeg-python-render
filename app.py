@@ -34,12 +34,29 @@ def combine_files():
     logger.info(f"Saved bg_music: {bg_music_path}")
 
     try:
-        # Define target resolution
+        # Define target resolution and frame rate
         target_resolution = '1280x720'
+        frame_rate = 25
+        duration_per_image = 5  # seconds
+        frames_per_image = frame_rate * duration_per_image  # 125 frames
 
-        # Input streams for both images, each 5 seconds, with scaling
-        stream1 = ffmpeg.input(image1_path).filter('scale', size=target_resolution, force_original_aspect_ratio='decrease').filter('pad', 1280, 720, '(ow-iw)/2', '(oh-ih)/2').filter('setsar', 1).filter('loop', loop=1, size=125, duration=5)  # 25 fps × 5s = 125 frames
-        stream2 = ffmpeg.input(image2_path).filter('scale', size=target_resolution, force_original_aspect_ratio='decrease').filter('pad', 1280, 720, '(ow-iw)/2', '(oh-ih)/2').filter('setsar', 1).filter('loop', loop=1, size=125, duration=5)  # 25 fps × 5s = 125 frames
+        # Input streams for both images, each 5 seconds, with scaling and looping
+        stream1 = (
+            ffmpeg.input(image1_path)
+            .filter('scale', size=target_resolution, force_original_aspect_ratio='decrease')
+            .filter('pad', 1280, 720, '(ow-iw)/2', '(oh-ih)/2')
+            .filter('setsar', 1)
+            .filter('loop', loop=frames_per_image - 1, size=1)  # Loop single frame 124 times (total 125 frames)
+            .filter('fps', fps=frame_rate)  # Ensure frame rate
+        )
+        stream2 = (
+            ffmpeg.input(image2_path)
+            .filter('scale', size=target_resolution, force_original_aspect_ratio='decrease')
+            .filter('pad', 1280, 720, '(ow-iw)/2', '(oh-ih)/2')
+            .filter('setsar', 1)
+            .filter('loop', loop=frames_per_image - 1, size=1)  # Loop single frame 124 times (total 125 frames)
+            .filter('fps', fps=frame_rate)  # Ensure frame rate
+        )
 
         # Concatenate images into a slideshow
         video = ffmpeg.concat(stream1, stream2, v=1, a=0)
@@ -48,7 +65,7 @@ def combine_files():
         # Output with video and audio
         output = ffmpeg.output(video, audio, output_file, 
                               vcodec='libx264', acodec='aac', 
-                              r=25,          # Frame rate
+                              r=frame_rate,  # Frame rate
                               t=10,          # 10 seconds total (2 images × 5s)
                               shortest=None) # Use full 10s duration
         logger.info("Running FFmpeg command")
