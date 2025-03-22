@@ -34,19 +34,23 @@ def combine_files():
     logger.info(f"Saved bg_music: {bg_music_path}")
 
     try:
-        # Input streams for both images, each 5 seconds
-        stream1 = ffmpeg.input(image1_path, loop=1, t=5)
-        stream2 = ffmpeg.input(image2_path, loop=1, t=5)
+        # Define target resolution
+        target_resolution = '1280x720'
+
+        # Input streams for both images, each 5 seconds, with scaling
+        stream1 = ffmpeg.input(image1_path).filter('scale', size=target_resolution, force_original_aspect_ratio='decrease').filter('pad', 1280, 720, '(ow-iw)/2', '(oh-ih)/2').filter('setsar', 1).filter('loop', loop=1, size=125, duration=5)  # 25 fps × 5s = 125 frames
+        stream2 = ffmpeg.input(image2_path).filter('scale', size=target_resolution, force_original_aspect_ratio='decrease').filter('pad', 1280, 720, '(ow-iw)/2', '(oh-ih)/2').filter('setsar', 1).filter('loop', loop=1, size=125, duration=5)  # 25 fps × 5s = 125 frames
+
         # Concatenate images into a slideshow
         video = ffmpeg.concat(stream1, stream2, v=1, a=0)
         audio = ffmpeg.input(bg_music_path)
-        # Output with resizing to 1280x720
+
+        # Output with video and audio
         output = ffmpeg.output(video, audio, output_file, 
                               vcodec='libx264', acodec='aac', 
-                              s='1280x720',  # Resize all to 1280x720
                               r=25,          # Frame rate
                               t=10,          # 10 seconds total (2 images × 5s)
-                              shortest=None)
+                              shortest=None) # Use full 10s duration
         logger.info("Running FFmpeg command")
         ffmpeg.run(output, overwrite_output=True, capture_stdout=True, capture_stderr=True)
 
